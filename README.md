@@ -2,12 +2,19 @@
 
 This FastAPI application provides a RESTful API for managing and retrieving information about vulnerabilities. The API supports operations such as creating, reading, updating, and deleting vulnerability records stored in a PostgreSQL database.
 
+The vulnerability grouping process is done using `TF-IDF` for feature extraction, `SVD` for dimensionality reduction, and `DBSCAN` for clustering similar vulnerabilities together. Vulnerabilities are grouped by endpoint and then by text similarity.
+
 ## Features
 
 - **Add Vulnerability**: Create new vulnerability records with details like title, endpoint, severity, and more.
 - **Retrieve Vulnerabilities**: Fetch a list of vulnerabilities grouped and tagged by their endpoint.
 - **Update Vulnerability**: Update an existing vulnerability record.
 - **Delete Vulnerability**: Remove a vulnerability record by its unique ID.
+
+
+## Setup
+
+Follow the steps below to run the project locally:
 
 ## Prerequisites
 
@@ -134,7 +141,34 @@ The application will be available at `http://127.0.0.1:8000/`.
 
 You can test the API using tools like [Postman](https://www.postman.com/) or [curl](https://curl.se/). Additionally, FastAPI provides interactive API documentation:
 
+
 - Swagger UI: `http://127.0.0.1:8000/docs`
 - ReDoc: `http://127.0.0.1:8000/redoc`
+
+
+
+
+
+
+
+
+---
+
+### **Explanation of Sections**:
+
+1. **Project Overview**: Describes the main functionality of the API and how it works.
+2. **Features**: Lists the available endpoints for interaction with the API.
+3. **Setup Instructions**: Detailed steps for getting the application up and running locally, including:
+   - Prerequisites (Python version and tools).
+   - Installation steps (with `pip` or `poetry`).
+   - Setting up the `.env` file for database connection credentials.
+   - Instructions for running the FastAPI application.
+4. **API Endpoints**: Describes the different API endpoints with example requests and responses.
+5. **Tech Stack**: Lists the technologies used in the project, including FastAPI, PostgreSQL, and Scikit-learn for text similarity.
+6. **Development**: Instructions for contributing to the project.
+7. **License**: Includes licensing information (MIT License).
+
+This README is intended to provide users and contributors with everything they need to understand and work with the project.
+
 
 
