@@ -2,23 +2,30 @@ from fastapi import FastAPI, HTTPException
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from pydantic import BaseModel
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.decomposition import TruncatedSVD
+from sklearn.cluster import DBSCAN
+from collections import defaultdict
+import os
 from typing import List
 
 app = FastAPI()
 
+# Database connection
 def get_db_connection():
     try:
         connection = psycopg2.connect(
-            dbname="netban",
-            user="postgres",
-            password="33803770",
-            host="localhost",
-            port="5432"
+            dbname=os.getenv("DB_NAME", "netban"),
+            user=os.getenv("DB_USER", "postgres"),
+            password=os.getenv("DB_PASSWORD", "33803770"),
+            host=os.getenv("DB_HOST", "localhost"),
+            port=os.getenv("DB_PORT", "5432")
         )
         return connection
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database connection failed: {e}")
 
+# Models
 class VulnerabilityInput(BaseModel):
     title: str
     endpoint: str
@@ -36,123 +43,85 @@ class VulnerabilityOutput(BaseModel):
     description: str
     sensor: str
 
+# Vulnerability grouping endpoint
 @app.get("/vulnerabilities/", response_model=List[VulnerabilityOutput])
 async def get_vulnerabilities():
     try:
         connection = get_db_connection()
         cursor = connection.cursor(cursor_factory=RealDictCursor)
 
+        # Fetch vulnerabilities
         query = """
-        SELECT
-            title,
-            endpoint,
-            severity,
-            cve,
-            description,
-            sensor
+        SELECT id, title, endpoint, severity, cve, description, sensor
         FROM vulnerabilities
         """
         cursor.execute(query)
         rows = cursor.fetchall()
 
-        grouped_data = {}
-        result = []
+        # Step 1: Group by endpoint and exact CVE match
+        grouped_data = defaultdict(list)
         for row in rows:
-            key = row["endpoint"]
-            if key not in grouped_data:
-                grouped_data[key] = f"group_{len(grouped_data) + 1}"
+            key = (row["endpoint"], row["cve"])
+            grouped_data[key].append(row)
 
-            result.append({
-                "title": row["title"],
-                "endpoint": row["endpoint"],
-                "tag": grouped_data[key],
-                "severity": row["severity"],
-                "cve": row["cve"],
-                "description": row["description"],
-                "sensor": row["sensor"]
-            })
+        # Step 2: Similarity-based grouping
+        final_groups = {}
+        group_id = 1
+
+        for (endpoint, _), vulnerabilities in grouped_data.items():
+            if len(vulnerabilities) == 1:
+                # Assign a unique group for single vulnerabilities
+                final_groups[f"group_{group_id}"] = vulnerabilities
+                group_id += 1
+            else:
+                # Perform text similarity-based clustering
+                texts = [f"{v['title']} {v['description']}" for v in vulnerabilities]
+
+                # Generate TF-IDF matrix
+                vectorizer = TfidfVectorizer()
+                tfidf_matrix = vectorizer.fit_transform(texts)
+
+                # Reduce dimensions with SVD
+                svd = TruncatedSVD(n_components=min(50, tfidf_matrix.shape[1]), random_state=42)
+                reduced_matrix = svd.fit_transform(tfidf_matrix)
+
+                # Apply DBSCAN clustering
+                dbscan = DBSCAN(eps=0.5, min_samples=2, metric="cosine")
+                clusters = dbscan.fit_predict(reduced_matrix)
+
+                # Assign clusters
+                cluster_map = defaultdict(list)
+                for idx, cluster_label in enumerate(clusters):
+                    if cluster_label == -1:
+                        # Treat outliers as a separate group
+                        cluster_label = group_id
+                        group_id += 1
+                    cluster_map[cluster_label].append(vulnerabilities[idx])
+
+                # Add clusters to final groups
+                for cluster_label, cluster_items in cluster_map.items():
+                    group_key = f"group_{group_id}"
+                    final_groups[group_key] = cluster_items
+                    group_id += 1
+
+        # Format response
+        result = []
+        for group, items in final_groups.items():
+            for item in items:
+                result.append({
+                    "title": item["title"],
+                    "endpoint": item["endpoint"],
+                    "tag": group,
+                    "severity": item["severity"],
+                    "cve": item["cve"],
+                    "description": item["description"],
+                    "sensor": item["sensor"]
+                })
 
         cursor.close()
         connection.close()
         return result
 
-    except HTTPException as http_exc:
-        raise http_exc
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
 
-@app.post("/vulnerabilities/")
-async def add_vulnerability(vulnerability: VulnerabilityInput):
-    try:
-        connection = get_db_connection()
-        cursor = connection.cursor()
-
-        insert_query = """
-        INSERT INTO vulnerabilities (title, endpoint, severity, cve, description, sensor)
-        VALUES (%s, %s, %s, %s, %s, %s);
-        """
-        cursor.execute(insert_query, (
-            vulnerability.title,
-            vulnerability.endpoint,
-            vulnerability.severity,
-            vulnerability.cve,
-            vulnerability.description,
-            vulnerability.sensor
-        ))
-        connection.commit()
-
-        cursor.close()
-        connection.close()
-        return {"message": "Vulnerability added successfully"}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to add vulnerability: {e}")
-
-@app.delete("/vulnerabilities/{vulnerability_id}")
-async def delete_vulnerability(vulnerability_id: int):
-    try:
-        connection = get_db_connection()
-        cursor = connection.cursor()
-
-        delete_query = """
-        DELETE FROM vulnerabilities
-        WHERE id = %s;
-        """
-        cursor.execute(delete_query, (vulnerability_id,))
-        connection.commit()
-
-        cursor.close()
-        connection.close()
-        return {"message": "Vulnerability deleted successfully"}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete vulnerability: {e}")
-
-@app.put("/vulnerabilities/{vulnerability_id}")
-async def update_vulnerability(vulnerability_id: int, vulnerability: VulnerabilityInput):
-    try:
-        connection = get_db_connection()
-        cursor = connection.cursor()
-
-        update_query = """
-        UPDATE vulnerabilities
-        SET title = %s, endpoint = %s, severity = %s, cve = %s, description = %s, sensor = %s
-        WHERE id = %s;
-        """
-        cursor.execute(update_query, (
-            vulnerability.title,
-            vulnerability.endpoint,
-            vulnerability.severity,
-            vulnerability.cve,
-            vulnerability.description,
-            vulnerability.sensor,
-            vulnerability_id
-        ))
-        connection.commit()
-
-        cursor.close()
-        connection.close()
-        return {"message": "Vulnerability updated successfully"}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update vulnerability: {e}")
