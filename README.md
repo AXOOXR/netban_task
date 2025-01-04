@@ -154,21 +154,6 @@ You can test the API using tools like [Postman](https://www.postman.com/) or [cu
 
 ---
 
-### **Explanation of Sections**:
-
-1. **Project Overview**: Describes the main functionality of the API and how it works.
-2. **Features**: Lists the available endpoints for interaction with the API.
-3. **Setup Instructions**: Detailed steps for getting the application up and running locally, including:
-   - Prerequisites (Python version and tools).
-   - Installation steps (with `pip` or `poetry`).
-   - Setting up the `.env` file for database connection credentials.
-   - Instructions for running the FastAPI application.
-4. **API Endpoints**: Describes the different API endpoints with example requests and responses.
-5. **Tech Stack**: Lists the technologies used in the project, including FastAPI, PostgreSQL, and Scikit-learn for text similarity.
-6. **Development**: Instructions for contributing to the project.
-7. **License**: Includes licensing information (MIT License).
-
-This README is intended to provide users and contributors with everything they need to understand and work with the project.
 
 
 
